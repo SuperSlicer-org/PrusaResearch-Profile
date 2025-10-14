@@ -1,0 +1,58 @@
+# Workflow to create a tag when a push on the branch main contains a new config_version=slicer_version key
+
+name: CI
+
+on:
+  # Triggers the workflow on push for the "main" branch
+  push:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+# allow to push into the repository (the new tag)
+permissions:
+  contents: write
+  
+jobs:
+  build:
+    # need an os with sed support.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v5
+      # get the vendor id
+      - name: get vendor id
+        id: vendor_id
+        run: |
+          echo "id=$(sed -n 's#id = ##p' description.ini)" >> $GITHUB_OUTPUT
+      - name: show vendor id
+        run: echo "vendor id = ${{ steps.vendor_id.outputs.id }}"
+      - name: get slicer version
+        id: slicer_version
+        run: |
+          echo "str=$(sed -n 's#slicer_version = ##p' profiles/${{ steps.vendor_id.outputs.id }}.ini)" >> $GITHUB_OUTPUT
+      - name: show slicer version
+        run: echo "slicer version = ${{ steps.slicer_version.outputs.str }}"
+      - name: get profile version
+        id: profile_version
+        run: |
+          echo "str=$(sed -n 's#config_version = ##p' profiles/${{ steps.vendor_id.outputs.id }}.ini)" >> $GITHUB_OUTPUT
+      - name: show profile version
+        run: echo "profile version = ${{ steps.profile_version.outputs.str }}"
+      # check if the tag exists
+      - uses: mukunku/tag-exists-action@v1.6.0
+        id: check_tag
+        with: 
+          tag: ${{ format('{0}={1}', steps.profile_version.outputs.str, steps.slicer_version.outputs.str)}}
+      - name: test tag
+        if: ${{steps.check_tag.outputs.exists == 'true'}}
+        run: |
+          echo "Error: the version already exists"
+          exit 1
+      - name: create tag
+        id: "tag_create"
+        run: |
+          git tag "${{ format('{0}={1}', steps.profile_version.outputs.str, steps.slicer_version.outputs.str)}}"
+          git push origin tag "${{ format('{0}={1}', steps.profile_version.outputs.str, steps.slicer_version.outputs.str)}}"
+
